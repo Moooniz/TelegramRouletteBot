@@ -43,9 +43,19 @@ async def onUpdateReceived(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
+
     botToken = os.getenv("ENV_BOTTOKEN")
     app = Application.builder().token(botToken).build()
     app.add_handler(CommandHandler("start", start))
+
+    port = int(os.getenv("PORT", "8080"))
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=port,
+        url_path="",
+        webhook_url=os.environ["WEBHOOK_URL"],
+        secret_token=os.getenv("WEBHOOK_SECRET"),
+    )
 
     # Combine filters: text (non-command) OR any dice OR any sticker
     # PTB v21+: use filters.Dice.ALL; older PTB: use filters.DICE
