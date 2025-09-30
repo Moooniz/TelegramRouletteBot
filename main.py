@@ -53,8 +53,7 @@ def main():
         listen="0.0.0.0",
         port=port,
         url_path="",
-        webhook_url=os.environ["WEBHOOK_URL"],
-        secret_token=os.getenv("WEBHOOK_SECRET"),
+        webhook_url=os.getenv["WEBHOOK_URL"]
     )
 
     # Combine filters: text (non-command) OR any dice OR any sticker
