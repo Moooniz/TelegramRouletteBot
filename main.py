@@ -43,7 +43,7 @@ async def onUpdateReceived(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-
+    #Declaring all the ENVs
     botToken = os.getenv("ENV_BOTTOKEN")
     webhook_url = os.getenv("WEBHOOK_URL")
     secret = os.getenv("WEBHOOK_SECRET")  # optional
