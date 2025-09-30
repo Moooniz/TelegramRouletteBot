@@ -4,6 +4,7 @@ import logging
 import asyncio
 import os
 from dotenv import load_dotenv
+from urllib.parse import urlparse
 
 load_dotenv()
 
@@ -48,6 +49,7 @@ def main():
     webhook_url = os.getenv("WEBHOOK_URL")
     secret = os.getenv("WEBHOOK_SECRET")  # optional
     port = int(os.getenv("PORT", "8080"))
+    path = urlparse(webhook_url).path.lstrip("/")
 
     if not botToken:
         raise RuntimeError("Missing BOT_TOKEN")
@@ -87,7 +89,7 @@ def main():
     app.run_webhook(
         listen="0.0.0.0",
         port=port,
-        url_path="",
+        url_path=path,
         webhook_url=webhook_url
     )
     #app.run_polling()
