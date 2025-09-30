@@ -45,15 +45,23 @@ async def onUpdateReceived(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
 
     botToken = os.getenv("ENV_BOTTOKEN")
+    webhook_url = os.getenv("WEBHOOK_URL")
+    secret = os.getenv("WEBHOOK_SECRET")  # optional
+    port = int(os.getenv("PORT", "8080"))
+
+    if not botToken:
+        raise RuntimeError("Missing BOT_TOKEN")
+    if not webhook_url:
+        raise RuntimeError("Missing WEBHOOK_URL")
+
     app = Application.builder().token(botToken).build()
     app.add_handler(CommandHandler("start", start))
 
-    port = int(os.getenv("PORT", "8080"))
     app.run_webhook(
         listen="0.0.0.0",
         port=port,
         url_path="",
-        webhook_url=os.getenv["WEBHOOK_URL"]
+        webhook_url=webhook_url
     )
 
     # Combine filters: text (non-command) OR any dice OR any sticker
