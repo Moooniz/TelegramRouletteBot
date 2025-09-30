@@ -57,25 +57,40 @@ def main():
     app = Application.builder().token(botToken).build()
     app.add_handler(CommandHandler("start", start))
 
+    # --- filters ---
+    # PTB v21: filters.Dice.ALL ; PTB v20: filters.DICE
+    dice_filter = getattr(getattr(filters, "Dice", None), "ALL", getattr(filters, "Dice"))
+    text_filter = filters.TEXT & ~filters.COMMAND
+
+    # groups: text or dice (privacy OFF if you want non-commands)
+    group_filter = filters.ChatType.GROUPS & (text_filter | dice_filter)
+    # private chats: text, dice, and stickers (optional)
+    private_filter = filters.ChatType.PRIVATE & (text_filter | dice_filter | filters.Sticker.ALL)
+    # --- handlers ---
+    app.add_handler(MessageHandler(group_filter, onUpdateReceived))
+    app.add_handler(MessageHandler(private_filter, onUpdateReceived))
+
+    #####################
+    # Combine filters: text (non-command) OR any dice OR any sticker
+    # PTB v21+: use filters.Dice.ALL; older PTB: use filters.DICE
+    #dice_filter = getattr(filters.Dice, "ALL", getattr(filters, "Dice"))
+
+    # receive text & dice in groups and supergroups
+    #group_filter = filters.ChatType.GROUPS & (
+    # #           (filters.TEXT & ~filters.COMMAND) | getattr(filters.Dice, "ALL", getattr(filters, "Dice")))
+    #combo = (filters.TEXT & ~filters.COMMAND) | dice_filter | filters.Sticker.ALL
+
+    #app.add_handler(MessageHandler(combo, onUpdateReceived))
+    #app.add_handler(MessageHandler(group_filter, onUpdateReceived))
+
+
     app.run_webhook(
         listen="0.0.0.0",
         port=port,
         url_path="",
         webhook_url=webhook_url
     )
-
-    # Combine filters: text (non-command) OR any dice OR any sticker
-    # PTB v21+: use filters.Dice.ALL; older PTB: use filters.DICE
-    dice_filter = getattr(filters.Dice, "ALL", getattr(filters, "Dice"))
-
-    # receive text & dice in groups and supergroups
-    group_filter = filters.ChatType.GROUPS & ((filters.TEXT & ~filters.COMMAND) | getattr(filters.Dice, "ALL", getattr(filters, "Dice")))
-    combo = (filters.TEXT & ~filters.COMMAND) | dice_filter | filters.Sticker.ALL
-
-    app.add_handler(MessageHandler(combo, onUpdateReceived))
-    app.add_handler(MessageHandler(group_filter, onUpdateReceived))
-
-    app.run_polling()
+    #app.run_polling()
 
 if __name__ == "__main__":
     main()
