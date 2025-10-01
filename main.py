@@ -198,6 +198,11 @@ def main():
     # Webhook path must match WEBHOOK_URL path
     path = urlparse(webhook_url).path.lstrip("/")
 
+    async def _post_init(app):
+        await init_db()
+
+    app.post_init = _post_init
+
     app.run_webhook(
         listen="0.0.0.0",
         port=port,
