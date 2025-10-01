@@ -176,9 +176,6 @@ def main():
     if not webhook_url:
         raise RuntimeError("Missing WEBHOOK_URL")
 
-    # Ensure DB exists before starting bot loop
-    asyncio.run(init_db())
-
     # Build app & handlers
     app = Application.builder().token(bot_token).build()
     app.add_handler(CommandHandler("start", start))
@@ -198,10 +195,18 @@ def main():
     # Webhook path must match WEBHOOK_URL path
     path = urlparse(webhook_url).path.lstrip("/")
 
+    # Ensure DB exists before starting bot loop
+    # init DB inside PTB's loop
     async def _post_init(app):
         await init_db()
 
     app.post_init = _post_init
+
+    # make sure a loop exists on Py 3.12
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
 
     app.run_webhook(
         listen="0.0.0.0",
