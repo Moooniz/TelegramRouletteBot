@@ -58,13 +58,22 @@ async def unset_contact_db(chat_id: int):
 # =========================
 # Admin check
 # =========================
-async def is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+async def is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, target_chat_id: int | None = None) -> bool:
     chat = update.effective_chat
+    msg  = update.effective_message
     user = update.effective_user
-    if not chat or not user:
+
+    # If the command was sent "as the group" (anonymous admin), treat as admin.
+    if msg and chat and msg.sender_chat and chat.type in ("group", "supergroup") and msg.sender_chat.id == chat.id:
+        return True
+
+    # Decide which chat to check: explicit target, or the current group.
+    cid = target_chat_id or (chat.id if chat and chat.type in ("group", "supergroup") else None)
+    if not cid or not user:
         return False
-    m = await context.bot.get_chat_member(chat.id, user.id)
-    return m.status in ("creator", "administrator")
+
+    member = await context.bot.get_chat_member(cid, user.id)
+    return member.status in ("creator", "administrator")
 
 # =========================
 # Commands
