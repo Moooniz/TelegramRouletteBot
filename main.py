@@ -219,6 +219,16 @@ async def onUpdateReceived(update: Update, context: ContextTypes.DEFAULT_TYPE):
             #text = f"User: {user.username} Just Hit the JACKPOT!{contact_line}"
             await msg.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode, disable_web_page_preview=True)
 
+            # After you determine (username, uid, name) from the DB:
+            notify_text = f"The user {user.username or user.full_name} just won 777! They will message you!"
+
+            if uid:
+                try:
+                    await context.bot.send_message(chat_id=uid, text=notify_text)
+                except Forbidden:
+                    # they haven't started the bot or blocked it — nothing else to do
+                    pass
+
         elif d.value in {1, 22, 43}:
             await msg.reply_text(f"המשתמש {user.username} הוציא 3 בשורה! נא לנסות שוב!")
             #await msg.reply_text(f"User: {user.username} Got 3 in a ROW!")
