@@ -186,7 +186,17 @@ async def unsetnotify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Notifier (user_id) cleared. The contact @username remains unchanged.")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hello! I am a RouletteBot for Telegram! To see the commands, please type /help")
+    # short instructions
+    await update.message.reply_text(
+        "Copy an emoji and send it *alone* to roll:\n"
+        "• Slot machine: 🎰\n"
+        "• Dice (cube): 🎲",
+        parse_mode="Markdown",
+        quote=False,
+    )
+    # extra: send standalone messages for easy copy
+    await update.message.reply_text("🎰", quote=False)
+    #await update.message.reply_text("🎲", quote=False)
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     HELP_TEXT = dedent("""
