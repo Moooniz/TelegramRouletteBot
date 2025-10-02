@@ -7,11 +7,14 @@ from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.error import Forbidden
+import logging
+from telegram.error import BadRequest
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, ContextTypes, filters
 )
 load_dotenv()
-
+log = logging.getLogger("bot")
+logging.basicConfig(level=logging.INFO)
 # =========================
 # Config / DB helpers
 # =========================
@@ -182,6 +185,23 @@ async def unsetnotify(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Hello!")
+
+async def on_error(update, context: ContextTypes.DEFAULT_TYPE):
+    # Log the stack trace
+    log.exception("Error while handling update: %s", context.error)
+    # Optional: tell the chat something went wrong (don’t crash if that fails)
+    try:
+        chat = update.effective_chat if isinstance(update, Update) else None
+        if chat:
+            # keep thread if forums are enabled
+            thread_id = getattr(getattr(update, "effective_message", None), "message_thread_id", None)
+            await context.bot.send_message(
+                chat_id=chat.id,
+                text="⚠️ Oops, something went wrong. Please try again.",
+                message_thread_id=thread_id,
+            )
+    except Exception:
+        pass
 
 # =========================
 # Message handler
