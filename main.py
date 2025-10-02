@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.error import Forbidden
+from textwrap import dedent
+from telegram import BotCommand
 import logging
 from telegram.error import BadRequest
 from telegram.ext import (
@@ -184,7 +186,29 @@ async def unsetnotify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Notifier (user_id) cleared. The contact @username remains unchanged.")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hello!")
+    await update.message.reply_text("Hello! I am a RouletteBot for Telegram! To see the commands, please type /help")
+
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    HELP_TEXT = dedent("""
+    Available commands:
+/start – Check that the bot is alive
+/help – Show this help
+
+# Group admin commands
+/setcontact @username – Set the public contact user for this group
+  • Tip: reply to a user's message with /setcontact to set that person (captures their ID)
+/getcontact – Show the current contact for this group
+/unsetcontact – Clear the contact (username stays empty)
+
+/setnotify <user_id> – Set the notifier user ID (bot will DM them on JACKPOT)
+/unsetnotify – Clear the notifier user ID (keeps the /setcontact username)
+
+Notes:
+• To receive DMs from the bot, the notifier must /start the bot at least once.
+• If you're an anonymous admin (“send as group”), the bot still recognizes you as admin.
+    """).strip()
+
+    await update.message.reply_text(HELP_TEXT, quote=False)
 
 async def on_error(update, context: ContextTypes.DEFAULT_TYPE):
     # Log the stack trace
@@ -280,6 +304,7 @@ def main():
     # Build app & handlers
     app = Application.builder().token(bot_token).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("setcontact", set_contact))
     app.add_handler(CommandHandler("getcontact", get_contact))
     app.add_handler(CommandHandler("unsetcontact", unset_contact))
@@ -302,6 +327,16 @@ def main():
     # init DB inside PTB's loop
     async def _post_init(app):
         await init_db()
+
+        await app.bot.set_my_commands([
+            BotCommand("start", "Check bot status"),
+            BotCommand("help", "Show help"),
+            BotCommand("setcontact", "Set group contact (@username or via reply)"),
+            BotCommand("getcontact", "Show group contact"),
+            BotCommand("unsetcontact", "Clear group contact"),
+            BotCommand("setnotify", "Set notifier user_id (DM on JACKPOT)"),
+            BotCommand("unsetnotify", "Clear notifier user_id"),
+        ])
 
     app.post_init = _post_init
 
