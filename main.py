@@ -150,7 +150,7 @@ async def setnotify(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             uid,
             f"You’ll receive jackpot notifications for “{update.effective_chat.title}”. "
-            f"If you didn’t expect this, ask a group admin to /unsetcontact."
+            f"If you didn’t expect this, ask a group admin to /unsetnotify."
         )
         status = "✅ I was able to DM them."
     except Forbidden:
