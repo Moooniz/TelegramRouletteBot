@@ -220,7 +220,7 @@ async def onUpdateReceived(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await msg.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode, disable_web_page_preview=True)
 
             # After you determine (username, uid, name) from the DB:
-            notify_text = f"The user {user.username or user.full_name} just won 777! They will message you!"
+            notify_text = f"The user @{user.username} just won 777! They will message you!"
 
             if uid:
                 try:
