@@ -187,13 +187,8 @@ async def unsetnotify(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # short instructions
-    await update.message.reply_text(
-        "Copy an emoji and send it *alone* to roll:\n"
-        "• Slot machine: 🎰\n"
-        "• Dice (cube): 🎲",
-        parse_mode="Markdown",
-        quote=False,
-    )
+    #await update.message.reply_text "Copy an emoji and send it *alone* to roll:\n"
+    await update.message.reply_text("תעתיק ותדביק את האימוגי הזה לבד על מנת לשחק!")
     # extra: send standalone messages for easy copy
     await update.message.reply_text("🎰", quote=False)
     #await update.message.reply_text("🎲", quote=False)
