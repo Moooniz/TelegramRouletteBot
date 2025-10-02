@@ -6,6 +6,7 @@ import asyncpg
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
+from telegram.error import Forbidden
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, ContextTypes, filters
 )
@@ -121,6 +122,64 @@ async def unset_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await unset_contact_db(update.effective_chat.id)
     await update.message.reply_text("Contact cleared for this group.")
 
+async def setnotify(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # must be used *in the target group*
+    if update.effective_chat.type not in ("group", "supergroup"):
+        return await update.message.reply_text("Use /setnotify inside the group you want to configure.")
+
+    # admin check (uses your improved is_admin)
+    if not await is_admin(update, context):
+        return await update.message.reply_text("Only group admins can set the notifier.")
+
+    if not context.args:
+        return await update.message.reply_text("Usage: /setnotify <user_id>")
+
+    raw = context.args[0].strip()
+    if not raw.isdigit():
+        return await update.message.reply_text("User ID must be digits only.")
+    uid = int(raw)
+
+    chat_id = update.effective_chat.id
+    # keep any existing username/name; just fill/override user_id
+    row = await get_contact_db(chat_id)
+    username, _, name = (row if row else (None, None, None))
+    await set_contact_db(chat_id, username=username, user_id=uid, name=name)
+
+    # optional: try DM once to confirm it works
+    try:
+        await context.bot.send_message(
+            uid,
+            f"You’ll receive jackpot notifications for “{update.effective_chat.title}”. "
+            f"If you didn’t expect this, ask a group admin to /unsetcontact."
+        )
+        status = "✅ I was able to DM them."
+    except Forbidden:
+        status = "⚠️ I couldn’t DM them yet. They must /start the bot once."
+
+    await update.message.reply_text(f"Notifier set to user_id={uid}. {status}")
+
+async def unsetnotify(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # must be used inside the target group
+    if update.effective_chat.type not in ("group", "supergroup"):
+        return await update.message.reply_text("Use /unsetnotify inside the group you want to configure.")
+
+    # admins only
+    if not await is_admin(update, context):
+        return await update.message.reply_text("Only group admins can unset the notifier.")
+
+    chat_id = update.effective_chat.id
+    row = await get_contact_db(chat_id)  # (username, user_id, name) or None
+    if not row:
+        return await update.message.reply_text("No contact configured yet for this group.")
+
+    username, uid, name = row
+    if uid is None:
+        return await update.message.reply_text("No notifier user_id is set for this group.")
+
+    # Keep username as-is, clear only user_id + name
+    await set_contact_db(chat_id, username=username, user_id=None, name=None)
+    await update.message.reply_text("Notifier (user_id) cleared. The contact @username remains unchanged.")
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Hello!")
 
@@ -147,7 +206,8 @@ async def onUpdateReceived(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if row:
                 username, uid, name = row
                 if username:
-                    contact_line = f"\n\nPlease contact @{username} to claim your prize!"
+                    #contact_line = f"\n\nPlease contact @{username} to claim your prize!"
+                    contact_line = f"\n\nנא לשלוח הודעה ל{username} על מנת לקבל את הפרס!"
                     reply_markup = InlineKeyboardMarkup(
                         [[InlineKeyboardButton(f"Message @{username}", url=f"https://t.me/{username}")]]
                     )
@@ -155,11 +215,13 @@ async def onUpdateReceived(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     contact_line = f'\nPlease contact <a href="tg://user?id={uid}">{name or "this user"}</a>'
                     parse_mode = ParseMode.HTML
 
-            text = f"User: {user.username} Just Hit the JACKPOT!{contact_line}"
+            text = f"המשתמש {user.username} הוציא 777! כל הכבוד! {contact_line}"
+            #text = f"User: {user.username} Just Hit the JACKPOT!{contact_line}"
             await msg.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode, disable_web_page_preview=True)
 
         elif d.value in {1, 22, 43}:
-            await msg.reply_text(f"User: {user.username} Got 3 in a ROW!")
+            await msg.reply_text(f"המשתמש {user.username} הוציא 3 בשורה! נא לנסות שוב!")
+            #await msg.reply_text(f"User: {user.username} Got 3 in a ROW!")
 
         # simple log
         print(f"Dice {d.emoji} = {d.value}")
@@ -191,6 +253,8 @@ def main():
     app.add_handler(CommandHandler("setcontact", set_contact))
     app.add_handler(CommandHandler("getcontact", get_contact))
     app.add_handler(CommandHandler("unsetcontact", unset_contact))
+    app.add_handler(CommandHandler("setnotify", setnotify))
+    app.add_handler(CommandHandler("unsetnotify", unsetnotify))
 
     # Filters (separate for groups vs private, as you wanted)
     dice_filter    = filters.Dice.ALL
