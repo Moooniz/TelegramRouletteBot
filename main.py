@@ -41,6 +41,15 @@ async def init_db():
               name     TEXT
             )
         """)
+        # after CREATE TABLE IF NOT EXISTS contacts (...)
+        await conn.execute("""
+                           ALTER TABLE contacts
+                               ADD COLUMN IF NOT EXISTS paid BOOLEAN NOT NULL DEFAULT FALSE
+                           """)
+        await conn.execute("""
+                           ALTER TABLE contacts
+                               ADD COLUMN IF NOT EXISTS group_title TEXT
+                           """)
 
 async def set_contact_db(chat_id: int, username: str | None, user_id: int | None, name: str | None):
     async with _pool.acquire() as conn:
