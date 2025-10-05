@@ -9,6 +9,7 @@ from telegram.constants import ParseMode
 from telegram.error import Forbidden
 from textwrap import dedent
 from telegram import BotCommand
+from telegram.error import Forbidden, BadRequest, RetryAfter
 import logging
 from telegram.error import BadRequest
 from telegram.ext import (
@@ -21,6 +22,8 @@ logging.basicConfig(level=logging.INFO)
 # Config / DB helpers
 # =========================
 DB_URL = os.getenv("DATABASE_URL")
+OWNER_USERNAME = os.getenv("OWNER_USERNAME", "Moooniz_YouTube")  # your @ without '@'
+OWNER_USER_ID  = int(os.getenv("OWNER_USER_ID", "0")) or None
 _pool: asyncpg.Pool | None = None
 
 async def init_db():
@@ -81,10 +84,24 @@ async def is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, target_ch
     member = await context.bot.get_chat_member(cid, user.id)
     return member.status in ("creator", "administrator")
 
+async def list_unpaid_groups():
+    async with _pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT chat_id, COALESCE(group_title, CAST(chat_id AS TEXT)) AS title
+            FROM contacts
+            WHERE COALESCE(paid, FALSE) = FALSE
+        """)
+        return [(r["chat_id"], r["title"]) for r in rows]
+
 # =========================
 # Commands
 # =========================
 async def set_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    # Auto-cache group title
+    if update.effective_chat and update.effective_chat.type in ("group", "supergroup"):
+        await refresh_group_title(context, update.effective_chat.id)
+
     if not await is_admin(update, context):
         return await update.message.reply_text("Only group admins can set the contact.")
 
@@ -109,7 +126,131 @@ async def set_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     who = f"@{username}" if username else (name or "this user")
     await update.message.reply_text(f"Contact set to {who} for this group ✅")
 
+async def set_paid_status(chat_id: int, paid: bool):
+    async with _pool.acquire() as conn:
+        await conn.execute("""
+          INSERT INTO contacts (chat_id, paid)
+          VALUES ($1, $2)
+          ON CONFLICT (chat_id) DO UPDATE SET paid = EXCLUDED.paid
+        """, chat_id, paid)
+
+async def sendad(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # OWNER ONLY
+    if not is_owner(update):
+        return await update.message.reply_text("Only the bot owner can send ads.", quote=False)
+
+    # Get the ad text from args or a replied message
+    ad_text = " ".join(context.args).strip() if context.args else None
+    if not ad_text and update.message.reply_to_message and update.message.reply_to_message.text:
+        ad_text = update.message.reply_to_message.text.strip()
+
+    if not ad_text:
+        return await update.message.reply_text(
+            "Usage: /sendad <text>\nOr reply to a message with /sendad.",
+            quote=False
+        )
+
+    groups = await list_unpaid_groups()
+    if not groups:
+        return await update.message.reply_text("No unpaid groups found.", quote=False)
+
+    sent = 0
+    skipped = 0
+    failures = []
+
+    for chat_id, title in groups:
+        try:
+            await context.bot.send_message(chat_id=chat_id, text=ad_text, disable_web_page_preview=True)
+            sent += 1
+            # small delay to be nice to rate limits
+            await asyncio.sleep(0.05)
+        except RetryAfter as e:
+            # back off exactly as Telegram requests, then retry once
+            await asyncio.sleep(e.retry_after + 0.5)
+            try:
+                await context.bot.send_message(chat_id=chat_id, text=ad_text, disable_web_page_preview=True)
+                sent += 1
+            except Exception as ex:
+                failures.append((chat_id, str(ex)))
+        except Forbidden as ex:
+            # bot removed/kicked or can’t send — skip
+            skipped += 1
+        except BadRequest as ex:
+            failures.append((chat_id, str(ex)))
+        except Exception as ex:
+            failures.append((chat_id, str(ex)))
+
+    # Summary back to you
+    summary = f"Sent to {sent} unpaid groups. Skipped: {skipped}. Failures: {len(failures)}"
+    if failures:
+        # keep it short; you can log details server-side if you prefer
+        summary += "\nSome groups failed (bot removed, topics-only, etc.)."
+    await update.message.reply_text(summary, quote=False)
+
+async def get_paid_status(chat_id: int) -> bool:
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT paid FROM contacts WHERE chat_id=$1", chat_id)
+        return bool(row["paid"]) if row else False
+
+async def refresh_group_title(context, chat_id: int) -> str | None:
+    """Fetch current title from Telegram (only works if the bot is in the group) and cache it."""
+    try:
+        chat = await context.bot.get_chat(chat_id)
+        title = chat.title
+        async with _pool.acquire() as conn:
+            await conn.execute("""
+              INSERT INTO contacts (chat_id, group_title)
+              VALUES ($1, $2)
+              ON CONFLICT (chat_id) DO UPDATE SET group_title = EXCLUDED.group_title
+            """, chat_id, title)
+        return title
+    except Exception:
+        return None
+
+def is_owner(update: Update) -> bool:
+    u = update.effective_user
+    if not u:
+        return False
+    if OWNER_USER_ID and u.id == OWNER_USER_ID:
+        return True
+    return bool(u.username and u.username.lower() == OWNER_USERNAME.lower().lstrip("@"))
+
+
+async def setpaid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # must run inside the target group (keep your logic)
+    if update.effective_chat.type not in ("group", "supergroup"):
+        return await update.message.reply_text("Use this inside the group.", quote=False)
+
+    # OWNER ONLY:
+    if not is_owner(update):
+        return await update.message.reply_text("Only the bot owner can set paid status.", quote=False)
+
+    # …existing on/off parsing and set_paid_status(...)
+    val = (context.args[0].lower() if context.args else "")
+    if val in {"on", "true", "yes", "1"}:
+        paid = True
+    elif val in {"off", "false", "no", "0"}:
+        paid = False
+    else:
+        return await update.message.reply_text("Usage: /setpaid on|off", quote=False)
+
+    await set_paid_status(update.effective_chat.id, paid)
+    title = await refresh_group_title(context, update.effective_chat.id)
+    await update.message.reply_text(
+        f"Paid set to *{paid}* for {title or 'this group'}.",
+        parse_mode="Markdown", quote=False
+    )
+
+async def getpaid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    paid = await get_paid_status(update.effective_chat.id)
+    await update.message.reply_text(f"Paid: *{paid}*", parse_mode="Markdown", quote=False)
+
 async def get_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    # Auto-cache group title
+    if update.effective_chat and update.effective_chat.type in ("group", "supergroup"):
+        await refresh_group_title(context, update.effective_chat.id)
+
     chat_id = update.effective_chat.id
     row = await get_contact_db(chat_id)
     if not row:
@@ -122,12 +263,22 @@ async def get_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await update.message.reply_text(f"Current contact: {link}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 async def unset_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    # Auto-cache group title
+    if update.effective_chat and update.effective_chat.type in ("group", "supergroup"):
+        await refresh_group_title(context, update.effective_chat.id)
+
     if not await is_admin(update, context):
         return await update.message.reply_text("Only group admins can unset the contact.")
     await unset_contact_db(update.effective_chat.id)
     await update.message.reply_text("Contact cleared for this group.")
 
 async def setnotify(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    # Auto-cache group title
+    if update.effective_chat and update.effective_chat.type in ("group", "supergroup"):
+        await refresh_group_title(context, update.effective_chat.id)
+
     # must be used *in the target group*
     if update.effective_chat.type not in ("group", "supergroup"):
         return await update.message.reply_text("Use /setnotify inside the group you want to configure.")
@@ -164,6 +315,11 @@ async def setnotify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Notifier set to user_id={uid}. {status}")
 
 async def unsetnotify(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    # Auto-cache group title
+    if update.effective_chat and update.effective_chat.type in ("group", "supergroup"):
+        await refresh_group_title(context, update.effective_chat.id)
+
     # must be used inside the target group
     if update.effective_chat.type not in ("group", "supergroup"):
         return await update.message.reply_text("Use /unsetnotify inside the group you want to configure.")
@@ -236,6 +392,11 @@ async def on_error(update, context: ContextTypes.DEFAULT_TYPE):
 # Message handler
 # =========================
 async def onUpdateReceived(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    # Auto-cache group title
+    if update.effective_chat and update.effective_chat.type in ("group", "supergroup"):
+        await refresh_group_title(context, update.effective_chat.id)
+
     msg = update.message
     if not msg:
         return
@@ -266,6 +427,7 @@ async def onUpdateReceived(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             text = f"המשתמש {user.username} הוציא 777! כל הכבוד! {contact_line}"
             #text = f"User: {user.username} Just Hit the JACKPOT!{contact_line}"
+            #7759745932
             await msg.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode, disable_web_page_preview=True)
 
             # After you determine (username, uid, name) from the DB:
@@ -315,6 +477,9 @@ def main():
     app.add_handler(CommandHandler("unsetcontact", unset_contact))
     app.add_handler(CommandHandler("setnotify", setnotify))
     app.add_handler(CommandHandler("unsetnotify", unsetnotify))
+    app.add_handler(CommandHandler("setpaid", setpaid))
+    app.add_handler(CommandHandler("getpaid", getpaid))
+    app.add_handler(CommandHandler("sendad", sendad))
 
     # Filters (separate for groups vs private, as you wanted)
     dice_filter    = filters.Dice.ALL
