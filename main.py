@@ -449,8 +449,8 @@ async def onUpdateReceived(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     # they haven't started the bot or blocked it — nothing else to do
                     pass
 
-        elif d.value in {1, 22, 43}:
-            await msg.reply_text(f"המשתמש {user.username} הוציא 3 בשורה! נא לנסות שוב!")
+        #elif d.value in {1, 22, 43}:
+            #await msg.reply_text(f"המשתמש {user.username} הוציא 3 בשורה! נא לנסות שוב!")
             #await msg.reply_text(f"User: {user.username} Got 3 in a ROW!")
 
         # simple log
